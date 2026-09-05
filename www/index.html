@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+<title>Wakeup Guard</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===================== LIST SCREEN ===================== -->
+  <section id="screen-list" class="screen active">
+    <header class="topbar">
+      <h1>Wakeup Guard</h1>
+      <p class="tagline">এমন অ্যালার্ম, যা সহজে বন্ধ করা যায় না</p>
+    </header>
+
+    <div id="alarm-list" class="alarm-list"></div>
+
+    <button id="btn-add-alarm" class="fab">+</button>
+  </section>
+
+  <!-- ===================== EDITOR SCREEN ===================== -->
+  <section id="screen-editor" class="screen">
+    <header class="topbar">
+      <button class="back-btn" id="btn-editor-back">←</button>
+      <h1>অ্যালার্ম সেট করুন</h1>
+    </header>
+
+    <div class="editor-body">
+      <label class="field-label">সময়</label>
+      <input type="time" id="input-time" class="time-input" />
+
+      <label class="field-label">লেবেল</label>
+      <input type="text" id="input-label" placeholder="যেমন: সকালের অফিস" />
+
+      <label class="field-label">পুনরাবৃত্তি (দিন)</label>
+      <div class="day-picker" id="day-picker">
+        <button data-day="0">রবি</button>
+        <button data-day="1">সোম</button>
+        <button data-day="2">মঙ্গল</button>
+        <button data-day="3">বুধ</button>
+        <button data-day="4">বৃহঃ</button>
+        <button data-day="5">শুক্র</button>
+        <button data-day="6">শনি</button>
+      </div>
+
+      <label class="field-label">বন্ধ করার চ্যালেঞ্জ (একাধিক বেছে নিতে পারেন)</label>
+      <div class="challenge-picker" id="challenge-picker">
+        <label class="challenge-opt"><input type="checkbox" value="type_phrase" checked><span>✍️ নির্দিষ্ট বাক্য টাইপ করুন</span></label>
+        <label class="challenge-opt"><input type="checkbox" value="speak_phrase"><span>🎙️ বাক্যটি মুখে বলুন</span></label>
+        <label class="challenge-opt"><input type="checkbox" value="password"><span>🔒 পাসওয়ার্ড</span></label>
+        <label class="challenge-opt"><input type="checkbox" value="math"><span>🧮 অংক সমাধান</span></label>
+        <label class="challenge-opt"><input type="checkbox" value="shake"><span>📳 ফোন ঝাঁকান</span></label>
+        <label class="challenge-opt"><input type="checkbox" value="hold"><span>👆 বাটন চেপে ধরে রাখুন</span></label>
+        <label class="challenge-opt"><input type="checkbox" value="pattern"><span>🔗 প্যাটার্ন আঁকুন</span></label>
+        <label class="challenge-opt"><input type="checkbox" value="face"><span>🙂 ক্যামেরার সামনে থাকুন (ফেস চেক)</span></label>
+      </div>
+
+      <div id="challenge-config-area" class="challenge-config-area"></div>
+
+      <label class="field-label">স্নুজ</label>
+      <div class="row-inline">
+        <label class="switch">
+          <input type="checkbox" id="input-snooze-enabled" checked>
+          <span class="slider"></span>
+        </label>
+        <span>স্নুজ চালু রাখুন (৫ মিনিট)</span>
+      </div>
+
+      <button id="btn-save-alarm" class="primary-btn">সংরক্ষণ করুন</button>
+      <button id="btn-delete-alarm" class="danger-btn" style="display:none;">অ্যালার্ম মুছুন</button>
+    </div>
+  </section>
+
+  <!-- ===================== ALARM FIRING / CHALLENGE SCREEN ===================== -->
+  <section id="screen-alarm" class="screen">
+    <div class="alarm-fullscreen">
+      <div class="alarm-clock-display">
+        <div class="big-time" id="alarm-current-time">07:00</div>
+        <div class="alarm-label" id="alarm-firing-label">অ্যালার্ম</div>
+      </div>
+
+      <div id="challenge-stage" class="challenge-stage"></div>
+
+      <div class="alarm-actions">
+        <button id="btn-snooze" class="snooze-btn">স্নুজ করুন (৫ মিনিট)</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<audio id="alarm-audio" loop preload="auto"></audio>
+
+<script src="app.js"></script>
+</body>
+</html>
