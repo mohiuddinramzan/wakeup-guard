@@ -445,8 +445,19 @@ const CHALLENGE_RENDERERS = {
       });
       return;
     }
-    block.querySelector('#cx-speak-go').addEventListener('click', ()=>{
+    block.querySelector('#cx-speak-go').addEventListener('click', async ()=>{
       const fb = block.querySelector('#cx-speak-fb');
+      fb.textContent = 'মাইক্রোফোন পারমিশন চাওয়া হচ্ছে...'; fb.className='stage-feedback';
+      // WebView-তে SpeechRecognition.start() নিজে থেকে রানটাইম মাইক পারমিশন
+      // ডায়ালগ দেখায় না — তাই আগে getUserMedia দিয়ে সরাসরি চাওয়া হচ্ছে।
+      try{
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t=>t.stop());
+      }catch(permErr){
+        fb.textContent = 'মাইক্রোফোন পারমিশন দেওয়া হয়নি। ফোনের Settings → Apps → Wakeup Guard → Permissions থেকে Microphone অন করে আবার চেষ্টা করুন।';
+        fb.className='stage-feedback err';
+        return;
+      }
       fb.textContent = 'শুনছি...'; fb.className='stage-feedback';
       const rec = new SR();
       rec.lang = 'en-US'; rec.continuous = false; rec.interimResults = false;
@@ -459,7 +470,17 @@ const CHALLENGE_RENDERERS = {
         if(ratio >= 0.7){ fb.textContent = `শোনা গেছে: "${heard}" — ঠিক আছে!`; fb.className='stage-feedback ok'; done(); }
         else { fb.textContent = `শোনা গেছে: "${heard}" — মিলেনি, আবার চেষ্টা করুন।`; fb.className='stage-feedback err'; }
       };
-      rec.onerror = ()=>{ fb.textContent = 'মাইক্রোফোন সমস্যা বা অনুমতি নেই। আবার চেষ্টা করুন।'; fb.className='stage-feedback err'; };
+      rec.onerror = (e)=>{
+        // 'not-allowed'/'service-not-allowed' = পারমিশন সমস্যা। অন্য কোড
+        // (যেমন 'network') এলে সেটা এই ডিভাইসের WebView-তে Speech
+        // Recognition backend আদৌ কাজ না করার লক্ষণ — এটা একটা পরিচিত
+        // WebView সীমাবদ্ধতা, শুধু পারমিশন ঠিক করে সমাধান নাও হতে পারে।
+        const code = e && e.error;
+        fb.textContent = (code === 'not-allowed' || code === 'service-not-allowed')
+          ? 'মাইক্রোফোন পারমিশন এখনো দেওয়া নেই।'
+          : `ভয়েস রিকগনিশন এই ডিভাইসে কাজ করছে না (${code || 'unknown'})। এই চ্যালেঞ্জ বাদ দিয়ে টাইপ/পাসওয়ার্ড/অংক ব্যবহার করুন।`;
+        fb.className='stage-feedback err';
+      };
       try{ rec.start(); }catch(e){ fb.textContent = 'শুরু করা যায়নি, আবার চাপুন।'; }
     });
   },
