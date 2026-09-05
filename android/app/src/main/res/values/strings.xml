@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Wakeup Guard</string>
+    <string name="title_activity_main">Wakeup Guard</string>
+    <string name="package_name">com.mohiuddinramzan.wakeupguard</string>
+    <string name="custom_url_scheme">com.mohiuddinramzan.wakeupguard</string>
+</resources>

@@ -95,6 +95,11 @@
 
 <audio id="alarm-audio" loop preload="auto"></audio>
 
+<!-- @capacitor/local-notifications ships its own browser bundle for
+     projects without a bundler. Termux সেটআপের সময় এই ফাইলটা
+     node_modules থেকে কপি করে আনতে হবে — README-এর "স্ক্রিন বন্ধ
+     থাকলেও অ্যালার্ম বাজানো" অংশে ঠিক কমান্ড দেওয়া আছে। -->
+<script src="capacitor-local-notifications.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

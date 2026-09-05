@@ -79,6 +79,7 @@ function renderList(){
       const a = alarms.find(x=>x.id===e.target.dataset.id);
       a.enabled = e.target.checked;
       saveAlarms(alarms);
+      scheduleAlarmNotifications(a);
       renderList();
     });
   });
@@ -254,15 +255,17 @@ document.getElementById('btn-save-alarm').addEventListener('click', ()=>{
     return;
   }
 
+  let savedAlarm;
   if(editingId){
-    const a = alarms.find(x=>x.id===editingId);
-    Object.assign(a, { time, label, days, challenges, config, snoozeEnabled });
+    savedAlarm = alarms.find(x=>x.id===editingId);
+    Object.assign(savedAlarm, { time, label, days, challenges, config, snoozeEnabled });
   } else {
-    const a = blankAlarm();
-    Object.assign(a, { time, label, days, challenges, config, snoozeEnabled });
-    alarms.push(a);
+    savedAlarm = blankAlarm();
+    Object.assign(savedAlarm, { time, label, days, challenges, config, snoozeEnabled });
+    alarms.push(savedAlarm);
   }
   saveAlarms(alarms);
+  scheduleAlarmNotifications(savedAlarm);
   renderList();
   showScreen('screen-list');
 });
@@ -270,6 +273,8 @@ document.getElementById('btn-save-alarm').addEventListener('click', ()=>{
 document.getElementById('btn-delete-alarm').addEventListener('click', ()=>{
   if(!editingId) return;
   if(!confirm('এই অ্যালার্মটি মুছে ফেলবেন?')) return;
+  const removed = alarms.find(a=>a.id===editingId);
+  if(removed) cancelAlarmNotifications(removed);
   alarms = alarms.filter(a=>a.id!==editingId);
   saveAlarms(alarms);
   renderList();
@@ -629,6 +634,88 @@ document.getElementById('day-picker').addEventListener('click', e=>{
   if(e.target.tagName === 'BUTTON') e.target.classList.toggle('active');
 });
 
+/* ---------------- OS-level scheduling (screen-off / background firing) ----------------
+   Plain JS timers (below) only run while this screen is open. To have a
+   real chance of firing with the screen off or the app backgrounded, we
+   also schedule an actual Android notification via @capacitor/local
+   -notifications, which Android's own OS timer (not our JS) is
+   responsible for delivering. This is the best available option without
+   writing custom native Android code — it is NOT guaranteed to be as
+   instant/reliable as a stock alarm-clock app, and I have not been able
+   to test it myself (no Android device / network in my working
+   environment). See README "স্ক্রিন বন্ধ থাকলেও অ্যালার্ম বাজানো" for
+   setup steps and what to verify on your device. */
+
+function hash32(str){
+  let h = 0;
+  for(let i=0;i<str.length;i++){ h = (h*31 + str.charCodeAt(i)) | 0; }
+  return Math.abs(h) % 2147483647;
+}
+function getLN(){
+  return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications) || null;
+}
+async function ensureNotificationPermission(){
+  const LN = getLN();
+  if(!LN) return;
+  try{
+    const perm = await LN.checkPermissions();
+    if(perm.display !== 'granted') await LN.requestPermissions();
+  }catch(e){ console.warn('notification permission check failed', e); }
+}
+function notifIdsFor(alarm){
+  return alarm.days.length === 0
+    ? [hash32(alarm.id + '_once')]
+    : alarm.days.map(d => hash32(alarm.id + '_d' + d));
+}
+async function cancelAlarmNotifications(alarm){
+  const LN = getLN();
+  if(!LN) return;
+  try{ await LN.cancel({ notifications: notifIdsFor(alarm).map(id=>({id})) }); }
+  catch(e){ /* nothing scheduled yet — fine */ }
+}
+async function scheduleAlarmNotifications(alarm){
+  const LN = getLN();
+  if(!LN) return;
+  await cancelAlarmNotifications(alarm);
+  if(!alarm.enabled) return;
+  const [hh, mm] = alarm.time.split(':').map(Number);
+  const body = 'বন্ধ করতে অ্যাপ খুলে চ্যালেঞ্জ সম্পন্ন করুন';
+  let notifications = [];
+  if(alarm.days.length === 0){
+    const now = new Date();
+    const at = new Date(); at.setHours(hh, mm, 0, 0);
+    if(at <= now) at.setDate(at.getDate() + 1);
+    notifications = [{
+      id: hash32(alarm.id + '_once'),
+      title: alarm.label || 'অ্যালার্ম',
+      body,
+      schedule: { at, allowWhileIdle: true },
+      extra: { alarmId: alarm.id }
+    }];
+  } else {
+    notifications = alarm.days.map(d => ({
+      id: hash32(alarm.id + '_d' + d),
+      title: alarm.label || 'অ্যালার্ম',
+      body,
+      schedule: { on: { weekday: d + 1, hour: hh, minute: mm }, allowWhileIdle: true, repeats: true },
+      extra: { alarmId: alarm.id }
+    }));
+  }
+  try{ await LN.schedule({ notifications }); }
+  catch(e){ console.warn('LocalNotifications.schedule failed', e); }
+}
+function setupNotificationListener(){
+  const LN = getLN();
+  if(!LN) return;
+  LN.addListener('localNotificationActionPerformed', (data)=>{
+    try{
+      const alarmId = data.notification && data.notification.extra && data.notification.extra.alarmId;
+      const a = alarms.find(x=>x.id===alarmId);
+      if(a) fireAlarm(a);
+    }catch(e){ console.warn('notification tap handling failed', e); }
+  });
+}
+
 /* ---------------- Main clock loop: checks real alarms once per second ----------------
    IMPORTANT (read README "Known limitations"): this only fires while
    this screen is open and the app is in the foreground. Plain web JS
@@ -661,3 +748,6 @@ setInterval(()=>{
 /* ---------------- Init ---------------- */
 renderList();
 showScreen('screen-list');
+ensureNotificationPermission();
+setupNotificationListener();
+alarms.forEach(a => scheduleAlarmNotifications(a));
