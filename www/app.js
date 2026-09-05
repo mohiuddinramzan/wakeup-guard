@@ -12,7 +12,6 @@
 const STORAGE_KEY = 'wg_alarms_v1';
 const CHALLENGE_LABELS = {
   type_phrase: '✍️ বাক্য টাইপ',
-  speak_phrase: '🎙️ বলে দেখান',
   password: '🔒 পাসওয়ার্ড',
   math: '🧮 অংক',
   shake: '📳 ঝাঁকান',
@@ -30,6 +29,19 @@ function loadAlarms(){
 }
 function saveAlarms(list){ localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
 let alarms = loadAlarms();
+// Migration: an alarm saved before this update may still list the now-removed
+// speak_phrase challenge. Strip it out so old data doesn't crash the renderer.
+(function migrateRemovedChallenges(){
+  let changed = false;
+  alarms.forEach(a=>{
+    if(a.challenges && a.challenges.includes('speak_phrase')){
+      a.challenges = a.challenges.filter(c=>c!=='speak_phrase');
+      if(a.challenges.length === 0) a.challenges = ['type_phrase'];
+      changed = true;
+    }
+  });
+  if(changed) saveAlarms(alarms);
+})();
 let editingId = null;
 
 /* ---------------- Navigation ---------------- */
@@ -132,7 +144,7 @@ function renderChallengeConfigArea(){
   area.innerHTML = '';
   const cfg = window._editorConfig;
 
-  if(selected.includes('type_phrase') || selected.includes('speak_phrase')){
+  if(selected.includes('type_phrase')){
     area.innerHTML += `
       <div class="config-block">
         <div class="ck-title">যে বাক্যটি বলতে/লিখতে হবে</div>
@@ -366,6 +378,7 @@ function renderCurrentChallenge(){
 
   const type = alarm.challenges[queueIndex];
   const renderer = CHALLENGE_RENDERERS[type];
+  if(!renderer){ advanceChallenge(); return; }
   const block = document.createElement('div');
   block.style.display='flex'; block.style.flexDirection='column'; block.style.gap='16px';
   stage.appendChild(block);
@@ -422,67 +435,6 @@ const CHALLENGE_RENDERERS = {
       else { fb.textContent = 'মিলছে না, আবার চেষ্টা করুন।'; fb.className='stage-feedback err'; }
     };
     block.querySelector('#cx-phrase-go').addEventListener('click', check);
-  },
-
-  speak_phrase(block, cfg, done){
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    block.innerHTML = `
-      <div class="stage-heading">জোরে বলুন:</div>
-      <div class="phrase-target">${escapeHtml(cfg.phrase)}</div>
-      <button class="stage-btn" id="cx-speak-go">🎙️ বলা শুরু করুন</button>
-      <div class="stage-feedback" id="cx-speak-fb"></div>`;
-    if(!SR){
-      block.querySelector('#cx-speak-fb').innerHTML = 'এই ডিভাইসে ভয়েস রিকগনিশন সমর্থিত নয়। এর বদলে টাইপ করুন:';
-      block.querySelector('#cx-speak-go').style.display='none';
-      const inp = document.createElement('input');
-      inp.className='stage-input'; inp.placeholder='এখানে টাইপ করুন';
-      const btn = document.createElement('button');
-      btn.className='stage-btn'; btn.textContent='নিশ্চিত করুন';
-      block.appendChild(inp); block.appendChild(btn);
-      btn.addEventListener('click', ()=>{
-        if(inp.value.trim().toLowerCase() === cfg.phrase.trim().toLowerCase()) done();
-        else { inp.classList.add('error'); }
-      });
-      return;
-    }
-    block.querySelector('#cx-speak-go').addEventListener('click', async ()=>{
-      const fb = block.querySelector('#cx-speak-fb');
-      fb.textContent = 'মাইক্রোফোন পারমিশন চাওয়া হচ্ছে...'; fb.className='stage-feedback';
-      // WebView-তে SpeechRecognition.start() নিজে থেকে রানটাইম মাইক পারমিশন
-      // ডায়ালগ দেখায় না — তাই আগে getUserMedia দিয়ে সরাসরি চাওয়া হচ্ছে।
-      try{
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach(t=>t.stop());
-      }catch(permErr){
-        fb.textContent = 'মাইক্রোফোন পারমিশন দেওয়া হয়নি। ফোনের Settings → Apps → Wakeup Guard → Permissions থেকে Microphone অন করে আবার চেষ্টা করুন।';
-        fb.className='stage-feedback err';
-        return;
-      }
-      fb.textContent = 'শুনছি...'; fb.className='stage-feedback';
-      const rec = new SR();
-      rec.lang = 'en-US'; rec.continuous = false; rec.interimResults = false;
-      rec.onresult = (e)=>{
-        const heard = e.results[0][0].transcript.trim().toLowerCase();
-        const targetWords = cfg.phrase.toLowerCase().replace(/[^a-z0-9\s]/g,'').split(/\s+/).filter(Boolean);
-        const heardWords = heard.replace(/[^a-z0-9\s]/g,'').split(/\s+/).filter(Boolean);
-        const matched = targetWords.filter(w=>heardWords.includes(w)).length;
-        const ratio = matched / targetWords.length;
-        if(ratio >= 0.7){ fb.textContent = `শোনা গেছে: "${heard}" — ঠিক আছে!`; fb.className='stage-feedback ok'; done(); }
-        else { fb.textContent = `শোনা গেছে: "${heard}" — মিলেনি, আবার চেষ্টা করুন।`; fb.className='stage-feedback err'; }
-      };
-      rec.onerror = (e)=>{
-        // 'not-allowed'/'service-not-allowed' = পারমিশন সমস্যা। অন্য কোড
-        // (যেমন 'network') এলে সেটা এই ডিভাইসের WebView-তে Speech
-        // Recognition backend আদৌ কাজ না করার লক্ষণ — এটা একটা পরিচিত
-        // WebView সীমাবদ্ধতা, শুধু পারমিশন ঠিক করে সমাধান নাও হতে পারে।
-        const code = e && e.error;
-        fb.textContent = (code === 'not-allowed' || code === 'service-not-allowed')
-          ? 'মাইক্রোফোন পারমিশন এখনো দেওয়া নেই।'
-          : `ভয়েস রিকগনিশন এই ডিভাইসে কাজ করছে না (${code || 'unknown'})। এই চ্যালেঞ্জ বাদ দিয়ে টাইপ/পাসওয়ার্ড/অংক ব্যবহার করুন।`;
-        fb.className='stage-feedback err';
-      };
-      try{ rec.start(); }catch(e){ fb.textContent = 'শুরু করা যায়নি, আবার চাপুন।'; }
-    });
   },
 
   password(block, cfg, done){
