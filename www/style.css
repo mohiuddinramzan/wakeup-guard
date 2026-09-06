@@ -133,6 +133,17 @@ input:checked + .slider::before{ transform:translateX(19px); background:#fff; }
 }
 .day-picker button.active{ background:var(--dawn-1); border-color:var(--dawn-1); color:#1a0f00; font-weight:700; }
 
+.sound-picker{ display:flex; gap:8px; }
+.sound-opt-btn{
+  flex:1; padding:12px 0; border-radius:10px;
+  background:var(--card); border:1px solid var(--line); color:var(--muted);
+  font-size:14px; cursor:pointer;
+}
+.sound-opt-btn.active{ background:var(--dawn-1); border-color:var(--dawn-1); color:#1a0f00; font-weight:700; }
+#input-sound-file{
+  width:100%; color:var(--muted); font-size:13px;
+}
+
 .challenge-picker{ display:flex; flex-direction:column; gap:2px; }
 .challenge-opt{
   display:flex; align-items:center; gap:10px; padding:12px 4px;

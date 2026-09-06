@@ -60,6 +60,22 @@
 
       <div id="challenge-config-area" class="challenge-config-area"></div>
 
+      <label class="field-label">🔔 অ্যালার্ম সাউন্ড</label>
+      <div class="sound-picker" id="sound-picker">
+        <button type="button" class="sound-opt-btn active" id="sound-opt-default">🔊 ডিফল্ট সাইরেন</button>
+        <button type="button" class="sound-opt-btn" id="sound-opt-custom">🎵 কাস্টম অডিও</button>
+      </div>
+      <div id="sound-custom-area" style="display:none;">
+        <input type="file" accept="audio/*" id="input-sound-file" style="margin-top:10px;">
+        <div class="hint" id="sound-file-name">কোনো ফাইল বাছাই করা হয়নি</div>
+        <div style="display:flex;gap:10px;margin-top:8px;">
+          <button type="button" class="danger-btn" id="btn-sound-preview" style="flex:1;">▶️ শুনুন</button>
+          <button type="button" class="danger-btn" id="btn-sound-clear" style="flex:1;">রিসেট</button>
+        </div>
+        <div class="hint">ফাইল বাছাই করার সময় ফোনের পিকারে সাধারণত Ringtones, Notifications, Alarms, Music ক্যাটাগরি দেখায় — সেখান থেকে ফোনের ডিফল্ট রিংটোনও বেছে নেওয়া যায়। ডিভাইসভেদে পিকারের চেহারা কিছুটা ভিন্ন হতে পারে।</div>
+        <div class="hint" style="color:var(--danger);">ছোট ফাইল (৩ MB-এর কম) বাছাই করাই ভালো — সংরক্ষণ-ক্ষমতা সীমিত, বড় ফাইলে সেভ ব্যর্থ হতে পারে।</div>
+      </div>
+
       <label class="field-label">স্নুজ</label>
       <div class="row-inline">
         <label class="switch">

@@ -27,7 +27,15 @@ function loadAlarms(){
   try{ return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
   catch(e){ return []; }
 }
-function saveAlarms(list){ localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
+function saveAlarms(list){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    return true;
+  }catch(e){
+    alert('সংরক্ষণ ব্যর্থ হয়েছে — সম্ভবত কাস্টম অডিও ফাইলটা অনেক বড়, অথবা মোট সংরক্ষণ-ক্ষমতা শেষ হয়ে গেছে। ছোট ফাইল বাছাই করো, বা ডিফল্ট সাইরেন ব্যবহার করো।');
+    return false;
+  }
+}
 let alarms = loadAlarms();
 // Migration: an alarm saved before this update may still list the now-removed
 // speak_phrase challenge. Strip it out so old data doesn't crash the renderer.
@@ -114,7 +122,8 @@ function blankAlarm(){
     enabled: true,
     challenges: ['type_phrase'],
     config: { phrase: DEFAULT_PHRASE, password: '', mathDifficulty: 'medium',
-              shakeCount: 15, holdSeconds: 5, pattern: [] },
+              shakeCount: 15, holdSeconds: 5, pattern: [],
+              customSoundData: null, customSoundName: '' },
     snoozeEnabled: true
   };
 }
@@ -134,6 +143,14 @@ function openEditor(id){
   window._editorConfig = JSON.parse(JSON.stringify(al.config));
   window._editorPattern = al.config.pattern.slice();
   renderChallengeConfigArea();
+  document.getElementById('input-sound-file').value = '';
+  if(window._editorConfig.customSoundData){
+    selectSoundOption('custom');
+    document.getElementById('sound-file-name').textContent = window._editorConfig.customSoundName || 'কাস্টম অডিও নির্বাচিত';
+  } else {
+    selectSoundOption('default');
+    document.getElementById('sound-file-name').textContent = 'কোনো ফাইল বাছাই করা হয়নি';
+  }
   document.getElementById('btn-delete-alarm').style.display = id ? 'block' : 'none';
   showScreen('screen-editor');
 }
@@ -276,7 +293,11 @@ document.getElementById('btn-save-alarm').addEventListener('click', ()=>{
     Object.assign(savedAlarm, { time, label, days, challenges, config, snoozeEnabled });
     alarms.push(savedAlarm);
   }
-  saveAlarms(alarms);
+  const ok = saveAlarms(alarms);
+  if(!ok){
+    if(!editingId) alarms.pop(); // undo the push — this alarm never actually saved
+    return; // stay on the editor so they can pick a smaller file
+  }
   scheduleAlarmNotifications(savedAlarm);
   renderList();
   showScreen('screen-list');
@@ -312,13 +333,30 @@ const AlarmSound = (()=>{
     });
   }
   return {
-    start(){
+    start(customSoundData){
       if(running) return;
       running = true;
-      ctx = new (window.AudioContext||window.webkitAudioContext)();
-      beepBurst();
-      timer = setInterval(beepBurst, 700);
-      if(navigator.vibrate) navigator.vibrate([500,300,500,300,500,300,500], );
+      const audioEl = document.getElementById('alarm-audio');
+      const startBeep = ()=>{
+        ctx = new (window.AudioContext||window.webkitAudioContext)();
+        beepBurst();
+        timer = setInterval(beepBurst, 700);
+      };
+      if(customSoundData){
+        audioEl.src = customSoundData;
+        audioEl.loop = true;
+        audioEl.currentTime = 0;
+        audioEl.play().catch(err=>{
+          // অ্যান্ড্রয়েড WebView-তে audio.play() মাঝেমধ্যে ব্লক হতে পারে —
+          // এমন হলে চুপচাপ ব্যর্থ না হয়ে ডিফল্ট সাইরেনে ফিরে যাওয়া হচ্ছে,
+          // যাতে অ্যালার্ম নিঃশব্দ না থেকে যায়।
+          console.warn('custom alarm sound failed, falling back to siren', err);
+          startBeep();
+        });
+      } else {
+        startBeep();
+      }
+      if(navigator.vibrate) navigator.vibrate([500,300,500,300,500,300,500]);
       window._vibrateLoop = setInterval(()=>{ if(navigator.vibrate) navigator.vibrate([500,300]); }, 1600);
     },
     stop(){
@@ -327,6 +365,9 @@ const AlarmSound = (()=>{
       if(window._vibrateLoop) clearInterval(window._vibrateLoop);
       if(navigator.vibrate) navigator.vibrate(0);
       if(ctx){ ctx.close(); ctx=null; }
+      const audioEl = document.getElementById('alarm-audio');
+      audioEl.pause();
+      audioEl.currentTime = 0;
     }
   };
 })();
@@ -338,7 +379,7 @@ function fireAlarm(alarm){
   firing = { alarm, queueIndex: 0 };
   document.getElementById('alarm-firing-label').textContent = alarm.label || 'অ্যালার্ম';
   updateClockDisplay();
-  AlarmSound.start();
+  AlarmSound.start(alarm.config && alarm.config.customSoundData);
   requestWakeLock();
   showScreen('screen-alarm');
   renderCurrentChallenge();
@@ -601,6 +642,55 @@ const CHALLENGE_RENDERERS = {
     });
   }
 };
+
+/* ---------------- Sound picker ---------------- */
+function selectSoundOption(which){
+  document.getElementById('sound-opt-default').classList.toggle('active', which==='default');
+  document.getElementById('sound-opt-custom').classList.toggle('active', which==='custom');
+  document.getElementById('sound-custom-area').style.display = which==='custom' ? 'block' : 'none';
+}
+document.getElementById('sound-opt-default').addEventListener('click', ()=>{
+  selectSoundOption('default');
+  window._editorConfig.customSoundData = null;
+  window._editorConfig.customSoundName = '';
+});
+document.getElementById('sound-opt-custom').addEventListener('click', ()=> selectSoundOption('custom'));
+
+document.getElementById('input-sound-file').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const MAX_BYTES = 3*1024*1024;
+  if(file.size > MAX_BYTES){
+    alert('ফাইলটি বড় (~' + Math.round(file.size/1024/1024*10)/10 + ' MB)। ৩ MB-এর কম একটা ফাইল বাছাই করো, নাহলে সেভ ব্যর্থ হতে পারে।');
+    e.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    window._editorConfig.customSoundData = reader.result;
+    window._editorConfig.customSoundName = file.name;
+    document.getElementById('sound-file-name').textContent = file.name;
+  };
+  reader.onerror = ()=> alert('ফাইলটি পড়া যায়নি, আবার চেষ্টা করো।');
+  reader.readAsDataURL(file);
+});
+
+document.getElementById('btn-sound-preview').addEventListener('click', ()=>{
+  if(!window._editorConfig.customSoundData){ alert('আগে একটা অডিও ফাইল বাছাই করো।'); return; }
+  const a = document.getElementById('alarm-audio');
+  a.src = window._editorConfig.customSoundData;
+  a.loop = false;
+  a.currentTime = 0;
+  a.play().catch(()=> alert('প্রিভিউ চালানো যায়নি — ফাইলটা সমর্থিত অডিও ফরম্যাট কিনা দেখো।'));
+});
+
+document.getElementById('btn-sound-clear').addEventListener('click', ()=>{
+  window._editorConfig.customSoundData = null;
+  window._editorConfig.customSoundName = '';
+  document.getElementById('input-sound-file').value = '';
+  document.getElementById('sound-file-name').textContent = 'কোনো ফাইল বাছাই করা হয়নি';
+  selectSoundOption('default');
+});
 
 /* ---------------- Day picker toggle ---------------- */
 document.getElementById('day-picker').addEventListener('click', e=>{
